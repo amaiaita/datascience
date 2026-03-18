@@ -41,9 +41,11 @@ To further understand how likely an individual is to 'convert' (i.e. receive a v
 
 The resulting model demonstrated strong discrimination (AUC ≈ 0.82), and the distribution of predicted probabilities revealed three natural segments: low, medium, and high propensity patients.
 
-Crucially, prior seasonal vaccination behaviour emerged as the strongest predictor, followed by age (particularly super-elder status), deprivation, and digital contactability. 
+Crucially, prior seasonal vaccination behaviour emerged as the strongest predictor, followed by age (particularly super-elder status), deprivation, and digital contactability (see the image below). 
 
-As a result, population segments were created to optimise communication sequencing and to account for the persistent behavioural patterns across different demographic and socio-economic groups. 
+![Image showing the distribution of baseline propnesities to book or vaccinate](../images/baseline_propensity_vaccine.png)
+
+As a result of these findings, population segments were created to optimise communication sequencing and to account for the persistent behavioural patterns across different demographic and socio-economic groups. 
 
 **Full Optimisation using Markov Decision Processes**
 
@@ -86,9 +88,17 @@ This approach does not optimise channel choice and therefore captures fewer effi
 
 ## Results
 
-A simulation of the MDP policy has an estimated saving of 75% and will 'convert' . 
+A simulation of the MDP policy has shown an estimated saving of 75% and and additional 144,426 number of individuals 'converted'.
+
+With the implementation of the Early Stopping Rule we estimate that we can eliminate over half the spend on further invites while preserving ~97.5% of total conversions. 
 
 Findings were presented to the stakeholders who are now looking into the implementation process of the proposed solutions. Further detail will be added after implementation. 
+
+## Key Messages
+
++ To optimise invite sequencing for future Covid vaccine campaigns two viable approaches were suggested: MDP full optimisation or rule-based early stopping.​
++ Both these approaches shift us from uniform prompting of individual to **evidence-led allocation**.
++ Savings generated from the implementation of either approach creates an opportunity to reinvest in understanding those individuals who persistently never vaccinate/never book.
 
 [comment]: <> (The below header stops the title from being rendered (as mkdocs adds it to the page from the "title" attribute) - this way we can add it in the main.html, along with the summary.)
 #
