@@ -55,11 +55,12 @@ One interesting feature of the pipeline is the use of clinical personas – a wr
 Another interesting feature is the use of [LLM Judges](https://nhsengland.github.io/datascience/articles/2024/12/31/LLM-as-a-Judge/) within our pipeline. These are LLMs which examine other LLM outputs, allowing our pipeline to spot mistakes and improve clinical realism. One judge ensures that our patient journey is realistic for the given admission, whilst another examines the quality of the clinical note.
 
 The pipeline is also highly configurable. A small sample of the change you can make include:
+
 - The possible reasons for admission.
 - The spelling and typo rates.
 - The inclusion of rare and novel diseases.
   
-For a detailed view under the hood, you can read our [technical report](https://github.com/nhsengland/synthetic_clinical_notes/blob/main/docs/technical_report.md), alongside all the prompts and code on our [GitHub](https://github.com/nhsengland/synthetic_clinical_notes). You can also check out out project [website page](https://nhsengland.github.io/datascience/our_work/ds304_synthetic_clinical_notes/).
+For a detailed view under the hood, you can read our [technical report](https://github.com/nhsengland/synthetic_clinical_notes/blob/main/docs/technical_report.md), alongside all the prompts and code on our [GitHub](https://github.com/nhsengland/synthetic_clinical_notes). You can also check out our project [website page](https://nhsengland.github.io/datascience/our_work/ds304_synthetic_clinical_notes/).
 
 ## What do notes look like?
 
