@@ -64,7 +64,7 @@ For a detailed view under the hood, you can read our [technical report](https://
 ## What do notes look like?
 
 <figure markdown>
-![Example Synthetic Clinical Note](../../images/)
+![Example Synthetic Clinical Note](../../images/synthetic_clinical_note_example.jpg)
 <figcaption>Figure 1: An example synthetic clinical note, with a typo and abbreviation highlighted.</figcaption>
 </figure>
 
