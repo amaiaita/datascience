@@ -19,7 +19,7 @@ Patients who waited less than 18 weeks generally followed similar sequences to t
 
 ## Conclusions
 
-By combining national data with clinical expertise, this study uncovered significant variation in patient pathways, particularly for those with complex needs navigating the lithotripsy pathway. Process mining and machine learning revealed disparities in waiting list durations and activities that influence time a patient waited for their treatment, while conformance analysis highlighted variations in patient pathways. Grounding the dataset in real-world clinical practice ensured operational relevance to improve NHS performance. These insights can support frontline decision-making and offer promising applications in the NHS, especially with the development of new pathway datasets.
+By combining national data with clinical expertise, this study uncovered variation in patient pathways, particularly for those with complex needs navigating the lithotripsy pathway. Process mining and machine learning revealed disparities in waiting list durations and activities that influence time a patient waited for their treatment, while conformance analysis highlighted variations in patient pathways. Grounding the dataset in real-world clinical practice ensured operational relevance to improve NHS performance. These insights can support frontline decision-making and offer promising applications in the NHS, especially with the development of new pathway datasets.
 
 Output|Link
 ---|---
