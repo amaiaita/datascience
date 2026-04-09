@@ -1,7 +1,7 @@
 ---
 title: Can AI Write Clinical Notes?
 authors: [willpoulett]
-date: 2026-03-19
+date: 2026-04-09
 categories: 
     - Synthetic Data
     - Evaluation
@@ -22,11 +22,7 @@ description: >
 
 ## Why do we need synthetic clinical notes?
 
-[Over 800,000](https://digital.nhs.uk/data-and-information/publications/statistical/nhs-workforce-statistics/november-2025) professionally qualified staff in NHS England spend an average of [13.5 hours](https://blog.hettshow.co.uk/research-reveals-clinicians-spend-a-third-of-working-hours-on-clinical-documentation) a week writing clinical documentation. This is a vast amount of data, written over a vast amount of time.
-
-Using Artificial Intelligence (AI) – particularly Large Language Models (LLMs) – to help generate and process this data, could save enormous amounts of time across the NHS, as well as improving clinical note quality. 
-
-Generating synthetic data to support the development of AI clinical documentation tools needs strong privacy assurances whilst also creating notes that represent the depth and breadth of clinical notes.
+Artificial Intelligence (AI) and Large Language Models (LLMs) are increasingly being used to process clinical documentation. This documentation contains highly sensitive data, so access is tightly controlled. However, the richness within this data would be enormously helpful for developing and testing new AI applications. 
 
 To solve this problem, we have created a pipeline to generate **realistic** and **varied** synthetic clinical notes. This pipeline uses no real data, instead relying on advanced LLM prompting, LLM medical knowledge, and lots of clinical feedback. 
 
