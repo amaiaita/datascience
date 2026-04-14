@@ -215,7 +215,7 @@ theme:
     primary: indigo
   font:
     text: Arial
-  logo: images/logo/nhs-blue-on-white.jpg
+  logo: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMCAyMHYtNmg0djZoNXYtOGgzTDEyIDMgMiAxMmgzdjh6Ii8+PC9zdmc+
   favicon: images/favicon/favicon.ico
   features:
     - search.share
@@ -257,7 +257,7 @@ extra:
       name: NHS England Data Science
   meta:
     - name: "og:image"
-      content: "https://nhsengland.github.io/datascience/docs/images/logo/nhs-white-on-blue.jpg"
+      content: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMCAyMHYtNmg0djZoNXYtOGgzTDEyIDMgMiAxMmgzdjh6Ii8+PC9zdmc+"
   generator: false
 copyright: Copyright &copy; 2023 Crown Copyright (NHS England)
 extra_javascript:
