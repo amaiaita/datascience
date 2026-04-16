@@ -255,9 +255,6 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/nhsengland/datascience
       name: NHS England Data Science
-  meta:
-    - name: "og:image"
-      content: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMCAyMHYtNmg0djZoNXYtOGgzTDEyIDMgMiAxMmgzdjh6Ii8+PC9zdmc+"
   generator: false
 copyright: Copyright &copy; 2023 Crown Copyright (NHS England)
 extra_javascript:
