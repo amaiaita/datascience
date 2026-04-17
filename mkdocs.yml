@@ -29,6 +29,7 @@ nav:
     - Project Tags: our_work/tags.md
     - Past/Current Projects:
       - Current Projects:
+        - PROJECT TEST: our_work/project-test.md
         - A&E Forecasting Tool: our_work/a_and_e_forecasting_tool.md
         - AI Assurance Research Path: our_work/ds278_Assurance_Research_Path.md
         - AI Dictionary: our_work/ai-dictionary.md
@@ -121,6 +122,7 @@ nav:
         - Waiting List Minimum Dataset (WLMDS) Proofs of Concept: our_work/hsma-wlmds.md
         - "PLOS: Predicting Length of Stay": our_work/ds_314_plos.md
       - Data Science for Linked/Longitudinal Data:
+        - PROJECT TEST: our_work/project-test.md
         - Data Linkage Hub:
           - __index.md: our_work/data-linkage-hub/index.md
           - Better Matching Algorithm: our_work/data-linkage-hub/linkage-projects/better-matching.md
