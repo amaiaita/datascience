@@ -8,7 +8,7 @@ body:
     attributes:
       value: |
         Thanks for contributing a blog post! Fill in the fields below and a PR will be created automatically.
-        
+
         > ⚠️ If you've contributed before and your author details are already in `.authors.yml`, you can leave the author section blank — just make sure your **Author ID** matches exactly.
 
   # ── Post metadata ──────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ body:
       description: |
         Optional. Add related links in the format below — one per line.
         Leave blank if you have no links (including this section with no content will cause a build error).
-        
+
         Format:
         ```
         Link Name: https://example.com
@@ -123,5 +123,40 @@ body:
     attributes:
       label: Profile URL
       description: Your GitHub profile or personal site.
+    validations:
+      required: false
+
+  # ── Images (optional) ──────────────────────────────────────────────────────
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ### Images for your blog post (optional)
+        You can include images in your blog post by uploading them after creating this issue.
+
+        **Instructions:**
+        1. After submitting this form, look for the comment box below
+        2. Click "Upload files" and select your images
+        3. Supported formats: PNG, JPG, JPEG, GIF
+        4. Images will be placed in `docs/images/blogs/[slug]/` automatically
+        5. Use markdown syntax in your post body to reference them:
+           ```markdown
+           ![Image description](../images/blogs/[slug]/image-filename.png)
+           ```
+
+  - type: textarea
+    id: images_info
+    attributes:
+      label: Image Filenames (if applicable)
+      description: |
+        If you're uploading images, list the filenames you'll use so the workflow knows what to expect.
+        Leave blank if not using images.
+
+        Example:
+        ```
+        cover.png
+        diagram1.jpg
+        ```
     validations:
       required: false

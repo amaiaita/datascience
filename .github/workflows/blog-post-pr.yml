@@ -93,14 +93,14 @@ jobs:
         id: generate
         uses: actions/github-script@v7
         env:
-          TITLE:       ${{ steps.parse.outputs.title }}
-          SLUG:        ${{ steps.parse.outputs.slug }}
-          DATE:        ${{ steps.parse.outputs.date }}
-          CATEGORIES:  ${{ steps.parse.outputs.categories }}
+          TITLE: ${{ steps.parse.outputs.title }}
+          SLUG: ${{ steps.parse.outputs.slug }}
+          DATE: ${{ steps.parse.outputs.date }}
+          CATEGORIES: ${{ steps.parse.outputs.categories }}
           DESCRIPTION: ${{ steps.parse.outputs.description }}
-          POST_BODY:   ${{ steps.parse.outputs.post_body }}
-          LINKS:       ${{ steps.parse.outputs.links }}
-          AUTHOR_ID:   ${{ steps.parse.outputs.author_id }}
+          POST_BODY: ${{ steps.parse.outputs.post_body }}
+          LINKS: ${{ steps.parse.outputs.links }}
+          AUTHOR_ID: ${{ steps.parse.outputs.author_id }}
         with:
           script: |
             const { TITLE, SLUG, DATE, AUTHOR_ID, DESCRIPTION, POST_BODY } = process.env;
@@ -137,11 +137,11 @@ jobs:
       - name: Update authors file
         uses: actions/github-script@v7
         env:
-          AUTHOR_ID:     ${{ steps.parse.outputs.author_id }}
-          AUTHOR_NAME:   ${{ steps.parse.outputs.author_name }}
-          AUTHOR_DESC:   ${{ steps.parse.outputs.author_desc }}
+          AUTHOR_ID: ${{ steps.parse.outputs.author_id }}
+          AUTHOR_NAME: ${{ steps.parse.outputs.author_name }}
+          AUTHOR_DESC: ${{ steps.parse.outputs.author_desc }}
           AUTHOR_AVATAR: ${{ steps.parse.outputs.author_avatar }}
-          AUTHOR_URL:    ${{ steps.parse.outputs.author_url }}
+          AUTHOR_URL: ${{ steps.parse.outputs.author_url }}
         with:
           script: |
             const { AUTHOR_ID, AUTHOR_NAME, AUTHOR_DESC, AUTHOR_AVATAR, AUTHOR_URL } = process.env;
@@ -179,6 +179,105 @@ jobs:
             fs.writeFileSync(path, raw + entry);
             console.log(`Added author: ${AUTHOR_ID}`);
 
+      # ── Download and process images ────────────────────────────────────────
+      - name: Process and download images
+        id: images
+        uses: actions/github-script@v7
+        env:
+          SLUG: ${{ steps.parse.outputs.slug }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const https = require('https');
+
+            const slug = process.env.SLUG;
+            const issueBody = context.payload.issue.body || '';
+
+            // Extract image URLs from issue body (GitHub CDN URLs from file uploads)
+            // Matches ![alt](https://github.com/user/repo/assets/...)
+            const imageRegex = /!\[([^\]]*)\]\((https:\/\/github\.com\/[^\s)]+)\)/g;
+            const matches = [];
+            let match;
+            while ((match = imageRegex.exec(issueBody)) !== null) {
+              matches.push({ alt: match[1], url: match[2] });
+            }
+
+            if (matches.length === 0) {
+              console.log('No images found in issue body.');
+              core.setOutput('image_count', '0');
+              return;
+            }
+
+            console.log(`Found ${matches.length} image(s) to download`);
+
+            // Create images directory
+            const imagesDir = path.join('docs/images/blogs', slug);
+            fs.mkdirSync(imagesDir, { recursive: true });
+
+            // Download each image
+            const downloadedImages = [];
+            for (const img of matches) {
+              const urlParts = img.url.split('/');
+              const filename = urlParts[urlParts.length - 1].split('?')[0] || `image-${downloadedImages.length + 1}`;
+              const filepath = path.join(imagesDir, filename);
+              
+              try {
+                // Download the file
+                await new Promise((resolve, reject) => {
+                  https.get(img.url, (response) => {
+                    const file = fs.createWriteStream(filepath);
+                    response.pipe(file);
+                    file.on('finish', () => {
+                      file.close();
+                      console.log(`Downloaded: ${filename}`);
+                      downloadedImages.push({ filename, alt: img.alt, url: img.url });
+                      resolve();
+                    });
+                  }).on('error', reject);
+                });
+              } catch (err) {
+                console.warn(`Failed to download ${filename}:`, err.message);
+              }
+            }
+
+            core.setOutput('image_count', downloadedImages.length.toString());
+            core.setOutput('images_json', JSON.stringify(downloadedImages));
+
+      # ── Update post markdown with local image paths ─────────────────────────
+      - name: Update image paths in post
+        if: steps.images.outputs.image_count != '0'
+        uses: actions/github-script@v7
+        env:
+          SLUG: ${{ steps.parse.outputs.slug }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const slug = process.env.SLUG;
+            const postPath = path.join('docs/articles/posts', `${slug}.md`);
+            let content = fs.readFileSync(postPath, 'utf8');
+
+            // Replace GitHub CDN image URLs with local paths
+            content = content.replace(
+              /!\[([^\]]*)\]\(https:\/\/github\.com\/[^\s)]+\)/g,
+              (match, alt) => {
+                // Extract filename from the GitHub URL in the post body
+                const issueBody = context.payload.issue.body || '';
+                const urlMatch = issueBody.match(/!\[[^\]]*\]\((https:\/\/github\.com\/[^\s)]+)\)/);
+                if (urlMatch) {
+                  const urlParts = urlMatch[1].split('/');
+                  const filename = urlParts[urlParts.length - 1].split('?')[0];
+                  return `![${alt}](../images/blogs/${slug}/${filename})`;
+                }
+                return match;
+              }
+            );
+
+            fs.writeFileSync(postPath, content);
+            console.log('Updated image paths in post');
+
       # ── Commit, push, and open the PR using the native GitHub CLI ───────────
       - name: Commit and push to new branch
         run: |
@@ -188,6 +287,10 @@ jobs:
           git checkout -b "$BRANCH"
           git add docs/articles/posts/${{ steps.generate.outputs.filename }} \
                   docs/articles/posts/.authors.yml
+          # Add images if any were downloaded
+          if [ -d "docs/images/blogs/${{ steps.parse.outputs.slug }}" ]; then
+            git add "docs/images/blogs/${{ steps.parse.outputs.slug }}"
+          fi
           git commit -m "docs: add blog post '${{ steps.parse.outputs.title }}'"
           git push origin "$BRANCH"
         env:
@@ -195,6 +298,11 @@ jobs:
 
       - name: Create Pull Request
         run: |
+          IMAGES_INFO=""
+          if [ "${{ steps.images.outputs.image_count }}" != "0" ]; then
+            IMAGES_INFO=$'\n**Images:** ${{ steps.images.outputs.image_count }} image(s) included in `docs/images/blogs/${{ steps.parse.outputs.slug }}/`'
+          fi
+
           gh pr create \
             --base main \
             --head "blog-post/${{ steps.parse.outputs.slug }}" \
@@ -203,7 +311,7 @@ jobs:
 
           **Post:** \`docs/articles/posts/${{ steps.generate.outputs.filename }}\`
           **Author:** ${{ steps.parse.outputs.author_id }}
-          **Date:** ${{ steps.parse.outputs.date }}
+          **Date:** ${{ steps.parse.outputs.date }}${IMAGES_INFO}
 
           Please review the generated file before merging." \
             --label "blog-post"
