@@ -6,15 +6,45 @@ on:
 
 jobs:
   create-blog-post-pr:
-    # Only run for issues carrying the blog-post label
-    if: contains(github.event.issue.labels.*.name, 'blog-post')
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
-      issues: read
+      issues: write
 
     steps:
+      # Check if this is a blog post submission by looking at the title or body
+      - name: Detect blog post submission
+        id: detect
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.issue.title || '';
+            const body = context.payload.issue.body || '';
+            const hasLabel = context.payload.issue.labels.some(l => l.name === 'blog-post');
+
+            // Check if it's a blog post (has label OR title starts with [Blog Post])
+            const isBlogPost = hasLabel || title.startsWith('[Blog Post]');
+
+            core.setOutput('is_blog_post', isBlogPost.toString());
+
+            // Add label if missing but detected as blog post
+            if (isBlogPost && !hasLabel) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: ['blog-post']
+              });
+              console.log('Added blog-post label');
+            }
+
+      - name: Exit if not a blog post
+        if: steps.detect.outputs.is_blog_post != 'true'
+        run: |
+          echo "Not a blog post submission, skipping"
+          exit 0
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
