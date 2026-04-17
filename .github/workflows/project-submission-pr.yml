@@ -50,11 +50,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ── Install YAML parsing tool and utilities ─────────────────────────────
-      - name: Install dependencies
-        run: |
-          npm install -g js-yaml
-
       # ── Parse issue body ─────────────────────────────────────────────────────
       - name: Parse issue fields
         id: parse
@@ -407,91 +402,74 @@ jobs:
       # ── Update mkdocs.yml ───────────────────────────────────────────────────
       - name: Update mkdocs.yml
         id: update_mkdocs
-        uses: actions/github-script@v7
         env:
-          TITLE:        ${{ steps.parse.outputs.title }}
-          SLUG:         ${{ steps.parse.outputs.slug }}
-          STATUS:       ${{ steps.parse.outputs.status }}
-          YEAR:         ${{ steps.parse.outputs.year }}
-          WORK_AREA:    ${{ steps.parse.outputs.main_work_area }}
-        with:
-          script: |
-            const fs = require('fs');
-            const yaml = require('js-yaml');
+          TITLE: ${{ steps.parse.outputs.title }}
+          SLUG: ${{ steps.parse.outputs.slug }}
+          STATUS: ${{ steps.parse.outputs.status }}
+          YEAR: ${{ steps.parse.outputs.year }}
+          WORK_AREA: ${{ steps.parse.outputs.main_work_area }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          import yaml
 
-            const mkdocsPath = 'mkdocs.yml';
-            const content = fs.readFileSync(mkdocsPath, 'utf8');
-            const config = yaml.load(content);
+          title = os.environ['TITLE']
+          slug = os.environ['SLUG']
+          status = os.environ['STATUS']
+          year = os.environ['YEAR']
+          work_area = os.environ['WORK_AREA']
 
-            const title = process.env.TITLE;
-            const slug = process.env.SLUG;
-            const status = process.env.STATUS;
-            const year = process.env.YEAR;
-            const workArea = process.env.WORK_AREA;
+          new_entry = f"{title}: our_work/{slug}.md"
 
-            const newEntry = `${title}: our_work/${slug}.md`;
+          # Load mkdocs.yml
+          with open('mkdocs.yml', 'r') as f:
+              config = yaml.safe_load(f)
 
-            // Navigate to Projects nav section
-            const projectsSection = config.nav.find(item => item.Projects);
-            if (!projectsSection) {
-              core.setFailed('Could not find Projects section in mkdocs.yml');
-              return;
-            }
+          # Navigate to Projects nav section
+          projects_section = next((item for item in config['nav'] if 'Projects' in item), None)
+          if not projects_section:
+              print('ERROR: Could not find Projects section in mkdocs.yml')
+              exit(1)
 
-            const projectsNav = projectsSection.Projects;
+          projects_nav = projects_section['Projects']
 
-            // Add to Past/Current Projects
-            const pastCurrentSection = projectsNav.find(item => item['Past/Current Projects']);
-            if (pastCurrentSection && pastCurrentSection['Past/Current Projects']) {
-              if (status === 'Current Project') {
-                // Add to Current Projects
-                const currentProjects = pastCurrentSection['Past/Current Projects'].find(
-                  item => item['Current Projects']
-                );
-                if (currentProjects && Array.isArray(currentProjects['Current Projects'])) {
-                  currentProjects['Current Projects'].push(newEntry);
-                  console.log(`Added to Current Projects`);
-                }
-              } else if (status === 'Past Project') {
-                // Add to Past Projects under the year
-                const pastProjects = pastCurrentSection['Past/Current Projects'].find(
-                  item => item['Past Projects']
-                );
-                if (pastProjects && Array.isArray(pastProjects['Past Projects'])) {
-                  // Find or create year entry
-                  let yearEntry = pastProjects['Past Projects'].find(item => item[year]);
-                  if (!yearEntry) {
-                    yearEntry = { [year]: [] };
-                    pastProjects['Past Projects'].push(yearEntry);
-                  }
-                  yearEntry[year].push(newEntry);
-                  console.log(`Added to Past Projects > ${year}`);
-                }
-              }
-            }
+          # Add to Past/Current Projects
+          past_current = next((item for item in projects_nav if 'Past/Current Projects' in item), None)
+          if past_current and 'Past/Current Projects' in past_current:
+              if status == 'Current Project':
+                  # Add to Current Projects
+                  current_proj = next((item for item in past_current['Past/Current Projects'] if 'Current Projects' in item), None)
+                  if current_proj and isinstance(current_proj.get('Current Projects'), list):
+                      current_proj['Current Projects'].append(new_entry)
+                      print(f'Added to Current Projects')
+              elif status == 'Past Project':
+                  # Add to Past Projects under the year
+                  past_proj = next((item for item in past_current['Past/Current Projects'] if 'Past Projects' in item), None)
+                  if past_proj and isinstance(past_proj.get('Past Projects'), list):
+                      # Find or create year entry
+                      year_entry = next((item for item in past_proj['Past Projects'] if year in item), None)
+                      if not year_entry:
+                          year_entry = {year: []}
+                          past_proj['Past Projects'].append(year_entry)
+                      year_entry[year].append(new_entry)
+                      print(f'Added to Past Projects > {year}')
 
-            // Add to Main Work Areas
-            const mainWorkAreasSection = projectsNav.find(item => item['Main Work Areas']);
-            if (mainWorkAreasSection && mainWorkAreasSection['Main Work Areas']) {
-              const workAreaEntry = mainWorkAreasSection['Main Work Areas'].find(
-                item => item[workArea]
-              );
-              if (workAreaEntry && Array.isArray(workAreaEntry[workArea])) {
-                workAreaEntry[workArea].push(newEntry);
-                console.log(`Added to Main Work Areas > ${workArea}`);
-              } else {
-                core.warning(`Could not find work area: ${workArea}`);
-              }
-            }
+          # Add to Main Work Areas
+          work_areas = next((item for item in projects_nav if 'Main Work Areas' in item), None)
+          if work_areas and 'Main Work Areas' in work_areas:
+              work_area_entry = next((item for item in work_areas['Main Work Areas'] if work_area in item), None)
+              if work_area_entry and isinstance(work_area_entry.get(work_area), list):
+                  work_area_entry[work_area].append(new_entry)
+                  print(f'Added to Main Work Areas > {work_area}')
+              else:
+                  print(f'WARNING: Could not find work area: {work_area}')
 
-            // Write back with careful formatting
-            const updatedContent = yaml.dump(config, {
-              lineWidth: -1,
-              indent: 2,
-              noRefs: true
-            });
-            fs.writeFileSync(mkdocsPath, updatedContent);
-            console.log('Updated mkdocs.yml');
+          # Write back
+          with open('mkdocs.yml', 'w') as f:
+              yaml.dump(config, f, default_flow_style=False, sort_keys=False, indent=2, width=float('inf'))
+
+          print('Updated mkdocs.yml')
+          PYTHON_SCRIPT
 
       # ── Commit changes ──────────────────────────────────────────────────────
       - name: Commit changes
