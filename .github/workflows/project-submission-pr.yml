@@ -6,15 +6,45 @@ on:
 
 jobs:
   create-project-page-pr:
-    # Only run for issues carrying the project-submission label
-    if: contains(github.event.issue.labels.*.name, 'project-submission')
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
-      issues: read
+      issues: write
 
     steps:
+      # Check if this is a project submission by looking at the title or body
+      - name: Detect project submission
+        id: detect
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.issue.title || '';
+            const body = context.payload.issue.body || '';
+            const hasLabel = context.payload.issue.labels.some(l => l.name === 'project-submission');
+
+            // Check if it's a project submission (has label OR title starts with [Project Submission])
+            const isProjectSubmission = hasLabel || title.startsWith('[Project Submission]');
+
+            core.setOutput('is_project_submission', isProjectSubmission.toString());
+
+            // Add label if missing but detected as project submission
+            if (isProjectSubmission && !hasLabel) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: ['project-submission']
+              });
+              console.log('Added project-submission label');
+            }
+
+      - name: Exit if not a project submission
+        if: steps.detect.outputs.is_project_submission != 'true'
+        run: |
+          echo "Not a project submission, skipping"
+          exit 0
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
