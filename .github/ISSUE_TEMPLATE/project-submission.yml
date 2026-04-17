@@ -219,7 +219,7 @@ body:
     validations:
       required: true
 
-  - type: textbox
+  - type: input
     id: project_year
     attributes:
       label: Year (if Past Project)
