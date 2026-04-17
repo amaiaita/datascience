@@ -208,7 +208,7 @@ jobs:
             }
 
             const fs   = require('fs');
-            const path = 'docs/articles/posts/.authors.yml';
+            const path = 'docs/articles/.authors.yml';
 
             let raw = '';
             try { raw = fs.readFileSync(path, 'utf8'); } catch {}
@@ -343,8 +343,8 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add docs/articles/posts/${{ steps.generate.outputs.filename }} \
-                  docs/articles/posts/.authors.yml
+          git add docs/articles/${{ steps.generate.outputs.filename }} \
+                  docs/articles/.authors.yml
           # Add images if any were downloaded
           if [ -d "docs/images/blogs/${{ steps.parse.outputs.slug }}" ]; then
             git add "docs/images/blogs/${{ steps.parse.outputs.slug }}"
