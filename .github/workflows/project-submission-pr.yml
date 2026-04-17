@@ -514,40 +514,46 @@ jobs:
         uses: actions/github-script@v7
         env:
           IMAGE_COUNT: ${{ steps.images.outputs.image_count }}
+          BRANCH_NAME: ${{ env.BRANCH_NAME }}
+          PR_TITLE: ${{ steps.parse.outputs.title }}
+          PR_SUMMARY: ${{ steps.parse.outputs.summary }}
+          PR_STATUS: ${{ steps.parse.outputs.status }}
+          PR_YEAR: ${{ steps.parse.outputs.year }}
+          PR_WORK_AREA: ${{ steps.parse.outputs.main_work_area }}
+          PR_ORIGIN: ${{ steps.parse.outputs.origin }}
+          PR_SLUG: ${{ steps.parse.outputs.slug }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         with:
           script: |
             const imageCount = process.env.IMAGE_COUNT || '0';
             const imagesNote = imageCount !== '0'
-              ? `\n- **Images**: ${imageCount} image(s) included in \`docs/images/our_work/${{ steps.parse.outputs.slug }}/\``
+              ? `\n- **Images**: ${imageCount} image(s) included in \`docs/images/our_work/${process.env.PR_SLUG}/\``
               : '';
+
+            const prBody = '## Project Submission: ' + process.env.PR_TITLE + '\n\n' +
+              '### Summary\n' +
+              process.env.PR_SUMMARY + '\n\n' +
+              '### Details\n' +
+              '- **Status**: ' + process.env.PR_STATUS + '\n' +
+              '- **Year**: ' + (process.env.PR_YEAR || 'N/A') + '\n' +
+              '- **Main Work Area**: ' + process.env.PR_WORK_AREA + '\n' +
+              '- **Origin**: ' + process.env.PR_ORIGIN + imagesNote + '\n\n' +
+              '### Changes\n' +
+              '- Added: `docs/our_work/' + process.env.PR_SLUG + '.md`\n' +
+              '- Updated: `mkdocs.yml` (added to Current/Past Projects and Work Area sections)\n\n' +
+              '### Next Steps\n' +
+              '1. Review the changes in this PR\n' +
+              '2. Once approved, merge this PR\n' +
+              '3. The website will be updated automatically\n\n' +
+              'Closes #' + process.env.ISSUE_NUMBER;
 
             const pr = await github.rest.pulls.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              head: '${{ env.BRANCH_NAME }}',
+              head: process.env.BRANCH_NAME,
               base: 'main',
-              title: 'Add project page: ${{ steps.parse.outputs.title }}',
-              body: `## Project Submission: ${{ steps.parse.outputs.title }}
-
-### Summary
-${{ steps.parse.outputs.summary }}
-
-### Details
-- **Status**: ${{ steps.parse.outputs.status }}
-- **Year**: ${{ steps.parse.outputs.year || 'N/A' }}
-- **Main Work Area**: ${{ steps.parse.outputs.main_work_area }}
-- **Origin**: ${{ steps.parse.outputs.origin }}${imagesNote}
-
-### Changes
-- Added: \`docs/our_work/${{ steps.parse.outputs.slug }}.md\`
-- Updated: \`mkdocs.yml\` (added to Current/Past Projects and Work Area sections)
-
-### Next Steps
-1. Review the changes in this PR
-2. Once approved, merge this PR
-3. The website will be updated automatically
-
-Closes #${{ github.event.issue.number }}`
+              title: `Add project page: ${process.env.PR_TITLE}`,
+              body: prBody
             });
 
             core.setOutput('pr_number', pr.data.number);
@@ -558,26 +564,28 @@ Closes #${{ github.event.issue.number }}`
         uses: actions/github-script@v7
         env:
           IMAGE_COUNT: ${{ steps.images.outputs.image_count }}
+          PR_SLUG: ${{ steps.parse.outputs.slug }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pr_number }}
+          PR_URL: ${{ steps.cpr.outputs.pr_url }}
         with:
           script: |
             const imageCount = process.env.IMAGE_COUNT || '0';
             const imagesMsg = imageCount !== '0'
               ? `\n\n**Images processed**: ${imageCount} image(s) have been automatically downloaded and included in the PR.`
-              : '\n\n**Images**: No images were detected in your issue. If you need to add images later, you can upload them to `docs/images/our_work/${{ steps.parse.outputs.slug }}/` in the PR branch.';
+              : `\n\n**Images**: No images were detected in your issue. If you need to add images later, you can upload them to \`docs/images/our_work/${process.env.PR_SLUG}/\` in the PR branch.`;
+
+            const commentBody = '## ✅ Project Submission Processed\n\n' +
+              'Great! Your project page has been generated and a PR has been created.\n\n' +
+              '**Pull Request**: #' + process.env.PR_NUMBER + '\n' +
+              '[View PR](' + process.env.PR_URL + ')' + imagesMsg + '\n\n' +
+              '### Next Steps\n' +
+              '1. Review the generated project page markdown\n' +
+              '2. The team will review and merge when ready\n' +
+              '3. Once merged, the website will be updated automatically';
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## ✅ Project Submission Processed
-
-Great! Your project page has been generated and a PR has been created.
-
-**Pull Request**: #${{ steps.cpr.outputs.pr_number }}
-[View PR](${{ steps.cpr.outputs.pr_url }})${imagesMsg}
-
-### Next Steps
-1. Review the generated project page markdown
-2. The team will review and merge when ready
-3. Once merged, the website will be updated automatically`
+              body: commentBody
             });
