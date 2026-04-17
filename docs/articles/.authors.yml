@@ -102,3 +102,9 @@ authors:
     slug: KonstantinGeorgiev      # Author profile slug
     avatar: https://avatars.githubusercontent.com/u/28511063?v=4
     url: https://github.com/kgeorgiev42
+  DanJones:
+    name: Dan Jones
+    description: Senior Engineer
+    avatar: https://avatars.githubusercontent.com/u/114224821?v=4
+    slug: DanJones
+    url: https://github.com/amaiaita
