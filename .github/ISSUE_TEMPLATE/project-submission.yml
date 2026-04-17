@@ -17,7 +17,7 @@ body:
         - Look through existing [project pages](https://nhsengland.github.io/datascience/our_work/) for examples
         - Read the [contributing guidelines](https://github.com/NHSEngland/datascience/blob/main/CONTRIBUTE.md#project-page)
 
-  - type: textbox
+  - type: input
     id: project_title
     attributes:
       label: Project Title
@@ -26,7 +26,7 @@ body:
     validations:
       required: true
 
-  - type: textbox
+  - type: input
     id: summary
     attributes:
       label: One-Line Summary
@@ -35,7 +35,7 @@ body:
     validations:
       required: true
 
-  - type: textbox
+  - type: input
     id: origin
     attributes:
       label: Origin (Optional)

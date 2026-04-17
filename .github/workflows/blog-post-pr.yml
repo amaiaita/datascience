@@ -250,27 +250,30 @@ jobs:
         uses: actions/github-script@v7
         env:
           SLUG: ${{ steps.parse.outputs.slug }}
+          IMAGES_JSON: ${{ steps.images.outputs.images_json }}
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
 
             const slug = process.env.SLUG;
+            const images = JSON.parse(process.env.IMAGES_JSON || '[]');
             const postPath = path.join('docs/articles/posts', `${slug}.md`);
             let content = fs.readFileSync(postPath, 'utf8');
 
+            // Build a map of GitHub CDN URL → local filename
+            const imageMap = new Map(images.map(img => [img.url, img.filename]));
+
             // Replace GitHub CDN image URLs with local paths
             content = content.replace(
-              /!\[([^\]]*)\]\(https:\/\/github\.com\/[^\s)]+\)/g,
-              (match, alt) => {
-                // Extract filename from the GitHub URL in the post body
-                const issueBody = context.payload.issue.body || '';
-                const urlMatch = issueBody.match(/!\[[^\]]*\]\((https:\/\/github\.com\/[^\s)]+)\)/);
-                if (urlMatch) {
-                  const urlParts = urlMatch[1].split('/');
-                  const filename = urlParts[urlParts.length - 1].split('?')[0];
+              /!\[([^\]]*)\]\((https:\/\/github\.com\/[^\s)]+)\)/g,
+              (match, alt, url) => {
+                const filename = imageMap.get(url);
+                if (filename) {
+                  console.log(`Replacing ${url} with ../images/blogs/${slug}/${filename}`);
                   return `![${alt}](../images/blogs/${slug}/${filename})`;
                 }
+                console.warn(`No filename found for URL: ${url}`);
                 return match;
               }
             );

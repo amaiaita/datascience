@@ -168,15 +168,41 @@ jobs:
         if: steps.validate.outputs.valid == 'false'
         run: exit 1
 
+      # ── Check if slug already exists ────────────────────────────────────────
+      - name: Check for duplicate slug
+        id: check_duplicate
+        run: |
+          if git ls-files --error-unmatch "docs/our_work/${{ steps.parse.outputs.slug }}.md" > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment if duplicate slug
+        if: steps.check_duplicate.outputs.exists == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ⚠️ Project Already Exists\n\nA project with the slug \`${{ steps.parse.outputs.slug }}\` already exists. Please use a different project title or update the existing project page instead.`
+            });
+
+      - name: Exit if duplicate
+        if: steps.check_duplicate.outputs.exists == 'true'
+        run: exit 1
+
       # ── Create branch and checkout ──────────────────────────────────────────
       - name: Create and checkout feature branch
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           BRANCH_NAME="project-submission/${{ steps.parse.outputs.slug }}"
           git checkout -b "$BRANCH_NAME"
-          
+
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
       # ── Generate project markdown file ──────────────────────────────────────
@@ -235,6 +261,10 @@ jobs:
               content += '\n';
             }
 
+            // Add comment and # marker to prevent double title rendering
+            content += '[comment]: <> (The below header stops the title from being rendered (as mkdocs adds it to the page from the "title" attribute) - this way we can add it in the main.html, along with the summary.)\n';
+            content += '#\n';
+
             // Write to file
             const filePath = path.join('docs/our_work', `${slug}.md`);
             fs.writeFileSync(filePath, content);
@@ -242,34 +272,107 @@ jobs:
 
             core.setOutput('md_path', filePath);
 
-      # ── Check if slug already exists ────────────────────────────────────────
-      - name: Check for duplicate slug
-        id: check_duplicate
-        run: |
-          if [ -f "docs/our_work/${{ steps.parse.outputs.slug }}.md" ]; then
-            # File already existed before we created it
-            if git ls-files --error-unmatch "docs/our_work/${{ steps.parse.outputs.slug }}.md" > /dev/null 2>&1; then
-              echo "exists=true" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Comment if duplicate slug
-        if: steps.check_duplicate.outputs.exists == 'true'
+      # ── Download and process images ────────────────────────────────────────
+      - name: Process and download images
+        id: images
         uses: actions/github-script@v7
+        env:
+          SLUG: ${{ steps.parse.outputs.slug }}
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## ⚠️ Project Already Exists\n\nA project with the slug \`${{ steps.parse.outputs.slug }}\` already exists. Please use a different project title or update the existing project page instead.`
-            });
+            const fs = require('fs');
+            const path = require('path');
+            const https = require('https');
 
-      - name: Exit if duplicate
-        if: steps.check_duplicate.outputs.exists == 'true'
-        run: exit 1
+            const slug = process.env.SLUG;
+            const issueBody = context.payload.issue.body || '';
+
+            // Extract image URLs from issue body (GitHub CDN URLs from file uploads)
+            // Matches ![alt](https://github.com/user/repo/assets/...)
+            const imageRegex = /!\[([^\]]*)\]\((https:\/\/github\.com\/[^\s)]+)\)/g;
+            const matches = [];
+            let match;
+            while ((match = imageRegex.exec(issueBody)) !== null) {
+              matches.push({ alt: match[1], url: match[2] });
+            }
+
+            if (matches.length === 0) {
+              console.log('No images found in issue body.');
+              core.setOutput('image_count', '0');
+              return;
+            }
+
+            console.log(`Found ${matches.length} image(s) to download`);
+
+            // Create images directory
+            const imagesDir = path.join('docs/images/our_work', slug);
+            fs.mkdirSync(imagesDir, { recursive: true });
+
+            // Download each image
+            const downloadedImages = [];
+            for (const img of matches) {
+              const urlParts = img.url.split('/');
+              const filename = urlParts[urlParts.length - 1].split('?')[0] || `image-${downloadedImages.length + 1}`;
+              const filepath = path.join(imagesDir, filename);
+
+              try {
+                // Download the file
+                await new Promise((resolve, reject) => {
+                  https.get(img.url, (response) => {
+                    const file = fs.createWriteStream(filepath);
+                    response.pipe(file);
+                    file.on('finish', () => {
+                      file.close();
+                      console.log(`Downloaded: ${filename}`);
+                      downloadedImages.push({ filename, alt: img.alt, url: img.url });
+                      resolve();
+                    });
+                  }).on('error', reject);
+                });
+              } catch (err) {
+                console.warn(`Failed to download ${filename}:`, err.message);
+              }
+            }
+
+            core.setOutput('image_count', downloadedImages.length.toString());
+            core.setOutput('images_json', JSON.stringify(downloadedImages));
+
+      # ── Update project markdown with local image paths ──────────────────────
+      - name: Update image paths in project page
+        if: steps.images.outputs.image_count != '0'
+        uses: actions/github-script@v7
+        env:
+          SLUG: ${{ steps.parse.outputs.slug }}
+          IMAGES_JSON: ${{ steps.images.outputs.images_json }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const slug = process.env.SLUG;
+            const images = JSON.parse(process.env.IMAGES_JSON || '[]');
+            const projectPath = path.join('docs/our_work', `${slug}.md`);
+            let content = fs.readFileSync(projectPath, 'utf8');
+
+            // Build a map of GitHub CDN URL → local filename
+            const imageMap = new Map(images.map(img => [img.url, img.filename]));
+
+            // Replace GitHub CDN image URLs with local paths
+            content = content.replace(
+              /!\[([^\]]*)\]\((https:\/\/github\.com\/[^\s)]+)\)/g,
+              (match, alt, url) => {
+                const filename = imageMap.get(url);
+                if (filename) {
+                  console.log(`Replacing ${url} with ../images/our_work/${slug}/${filename}`);
+                  return `![${alt}](../images/our_work/${slug}/${filename})`;
+                }
+                console.warn(`No filename found for URL: ${url}`);
+                return match;
+              }
+            );
+
+            fs.writeFileSync(projectPath, content);
+            console.log('Updated image paths in project page');
 
       # ── Update mkdocs.yml ───────────────────────────────────────────────────
       - name: Update mkdocs.yml
@@ -360,18 +463,15 @@ jobs:
             fs.writeFileSync(mkdocsPath, updatedContent);
             console.log('Updated mkdocs.yml');
 
-      # ── Handle images (for now, create placeholder) ──────────────────────────
-      - name: Instructions for images comment
-        run: |
-          echo "Images will be processed from issue attachments."
-          echo "Github issue form file uploads appear as links in the issue body."
-          echo "These will need to be extracted and downloaded."
-
       # ── Commit changes ──────────────────────────────────────────────────────
       - name: Commit changes
         run: |
           git add docs/our_work/${{ steps.parse.outputs.slug }}.md
           git add mkdocs.yml
+          # Add images if any were downloaded
+          if [ -d "docs/images/our_work/${{ steps.parse.outputs.slug }}" ]; then
+            git add "docs/images/our_work/${{ steps.parse.outputs.slug }}"
+          fi
           git commit -m "Add project page: ${{ steps.parse.outputs.title }}"
 
       # ── Push branch and create PR ───────────────────────────────────────────
@@ -382,8 +482,15 @@ jobs:
       - name: Create Pull Request
         id: cpr
         uses: actions/github-script@v7
+        env:
+          IMAGE_COUNT: ${{ steps.images.outputs.image_count }}
         with:
           script: |
+            const imageCount = process.env.IMAGE_COUNT || '0';
+            const imagesNote = imageCount !== '0'
+              ? `\n- **Images**: ${imageCount} image(s) included in \`docs/images/our_work/${{ steps.parse.outputs.slug }}/\``
+              : '';
+
             const pr = await github.rest.pulls.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -399,7 +506,7 @@ ${{ steps.parse.outputs.summary }}
 - **Status**: ${{ steps.parse.outputs.status }}
 - **Year**: ${{ steps.parse.outputs.year || 'N/A' }}
 - **Main Work Area**: ${{ steps.parse.outputs.main_work_area }}
-- **Origin**: ${{ steps.parse.outputs.origin }}
+- **Origin**: ${{ steps.parse.outputs.origin }}${imagesNote}
 
 ### Changes
 - Added: \`docs/our_work/${{ steps.parse.outputs.slug }}.md\`
@@ -407,9 +514,8 @@ ${{ steps.parse.outputs.summary }}
 
 ### Next Steps
 1. Review the changes in this PR
-2. If images need to be uploaded, please add them to \`docs/images/our_work/${{ steps.parse.outputs.slug }}/\`
-3. Once approved, merge this PR
-4. The website will be updated automatically
+2. Once approved, merge this PR
+3. The website will be updated automatically
 
 Closes #${{ github.event.issue.number }}`
             });
@@ -420,8 +526,15 @@ Closes #${{ github.event.issue.number }}`
       # ── Comment on original issue ───────────────────────────────────────────
       - name: Comment on issue with PR link
         uses: actions/github-script@v7
+        env:
+          IMAGE_COUNT: ${{ steps.images.outputs.image_count }}
         with:
           script: |
+            const imageCount = process.env.IMAGE_COUNT || '0';
+            const imagesMsg = imageCount !== '0'
+              ? `\n\n**Images processed**: ${imageCount} image(s) have been automatically downloaded and included in the PR.`
+              : '\n\n**Images**: No images were detected in your issue. If you need to add images later, you can upload them to `docs/images/our_work/${{ steps.parse.outputs.slug }}/` in the PR branch.';
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -431,12 +544,10 @@ Closes #${{ github.event.issue.number }}`
 Great! Your project page has been generated and a PR has been created.
 
 **Pull Request**: #${{ steps.cpr.outputs.pr_number }}
-[View PR](${{ steps.cpr.outputs.pr_url }})
+[View PR](${{ steps.cpr.outputs.pr_url }})${imagesMsg}
 
 ### Next Steps
 1. Review the generated project page markdown
-2. If you need to upload images, download them to \`docs/images/our_work/${{ steps.parse.outputs.slug }}/\` and commit them to the PR
-3. The team will review and merge when ready
-
-**Note**: Images should be uploaded to the PR branch at \`docs/images/our_work/${{ steps.parse.outputs.slug }}/\` if multiple images, or \`docs/images/our_work/${{ steps.parse.outputs.slug }}_[filename]\` if a single image.`
+2. The team will review and merge when ready
+3. Once merged, the website will be updated automatically`
             });
