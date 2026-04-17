@@ -182,7 +182,7 @@ jobs:
             // Write to the correct location
             const fs = require('fs');
             const path = require('path');
-            const dir  = 'docs/articles/posts';
+            const dir  = 'docs/articles';
             fs.mkdirSync(dir, { recursive: true });
             const filename = `${SLUG}.md`;
             fs.writeFileSync(path.join(dir, filename), content);
