@@ -104,6 +104,31 @@ jobs:
                   })
               : [];
 
+            // Validate required fields
+            const missingFields = [];
+            if (!title) missingFields.push('Post title');
+            if (!slug) missingFields.push('Slug (URL-friendly identifier)');
+            if (!date) missingFields.push('Publication date');
+            if (!categoriesRaw) missingFields.push('Categories');
+            if (!description) missingFields.push('Short description');
+            if (!postBody) missingFields.push('Post body');
+            if (!authorId) missingFields.push('Author ID');
+
+            if (missingFields.length > 0) {
+              const errorMsg = `❌ Missing required fields:\n${missingFields.map(f => `- ${f}`).join('\n')}`;
+              core.setFailed(errorMsg);
+
+              // Comment on the issue with helpful error
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `## ❌ Submission Error\n\n${errorMsg}\n\nPlease edit your issue to fill in all required fields.`
+              });
+
+              throw new Error(errorMsg);
+            }
+
             // Expose as outputs
             core.setOutput('title',            title);
             core.setOutput('slug',             slug);
