@@ -415,14 +415,7 @@ jobs:
         run: |
           python3 << 'PYTHON_SCRIPT'
           import os
-          import yaml
-
-          # Add constructor for custom tags to prevent errors
-          def custom_constructor(loader, tag_suffix, node):
-              return loader.construct_scalar(node) if isinstance(node, yaml.ScalarNode) else None
-
-          yaml.add_multi_constructor('!', custom_constructor, Loader=yaml.FullLoader)
-          yaml.add_multi_constructor('tag:yaml.org,2002:python/', custom_constructor, Loader=yaml.FullLoader)
+          import re
 
           title = os.environ['TITLE']
           slug = os.environ['SLUG']
@@ -430,54 +423,47 @@ jobs:
           year = os.environ['YEAR']
           work_area = os.environ['WORK_AREA']
 
-          new_entry = f"{title}: our_work/{slug}.md"
+          new_entry = f"        - {title}: our_work/{slug}.md"
 
-          # Load mkdocs.yml with FullLoader to handle custom tags
+          # Read the mkdocs.yml file
           with open('mkdocs.yml', 'r') as f:
-              config = yaml.load(f, Loader=yaml.FullLoader)
-
-          # Navigate to Projects nav section
-          projects_section = next((item for item in config['nav'] if 'Projects' in item), None)
-          if not projects_section:
-              print('ERROR: Could not find Projects section in mkdocs.yml')
-              exit(1)
-
-          projects_nav = projects_section['Projects']
+              content = f.read()
 
           # Add to Past/Current Projects
-          past_current = next((item for item in projects_nav if 'Past/Current Projects' in item), None)
-          if past_current and 'Past/Current Projects' in past_current:
-              if status == 'Current Project':
-                  # Add to Current Projects
-                  current_proj = next((item for item in past_current['Past/Current Projects'] if 'Current Projects' in item), None)
-                  if current_proj and isinstance(current_proj.get('Current Projects'), list):
-                      current_proj['Current Projects'].append(new_entry)
-                      print(f'Added to Current Projects')
-              elif status == 'Past Project':
-                  # Add to Past Projects under the year
-                  past_proj = next((item for item in past_current['Past/Current Projects'] if 'Past Projects' in item), None)
-                  if past_proj and isinstance(past_proj.get('Past Projects'), list):
-                      # Find or create year entry
-                      year_entry = next((item for item in past_proj['Past Projects'] if year in item), None)
-                      if not year_entry:
-                          year_entry = {year: []}
-                          past_proj['Past Projects'].append(year_entry)
-                      year_entry[year].append(new_entry)
-                      print(f'Added to Past Projects > {year}')
+          if status == 'Current Project':
+              # Find "Current Projects:" section and add after it
+              pattern = r'(      - Current Projects:\n)'
+              replacement = r'\g<1>' + new_entry + '\n'
+              content = re.sub(pattern, replacement, content, count=1)
+              print('Added to Current Projects')
+          elif status == 'Past Project':
+              # Find the year section under Past Projects, or create it
+              year_pattern = rf'(      - {year}:\n)'
+              if re.search(year_pattern, content):
+                  # Year exists, add to it
+                  replacement = r'\g<1>' + new_entry + '\n'
+                  content = re.sub(year_pattern, replacement, content, count=1)
+                  print(f'Added to Past Projects > {year}')
+              else:
+                  # Year doesn't exist, create it after "Past Projects:"
+                  pattern = r'(      - Past Projects:\n)'
+                  new_year_section = f'      - {year}:\n{new_entry}\n'
+                  replacement = r'\g<1>' + new_year_section
+                  content = re.sub(pattern, replacement, content, count=1)
+                  print(f'Created Past Projects > {year} and added project')
 
           # Add to Main Work Areas
-          work_areas = next((item for item in projects_nav if 'Main Work Areas' in item), None)
-          if work_areas and 'Main Work Areas' in work_areas:
-              work_area_entry = next((item for item in work_areas['Main Work Areas'] if work_area in item), None)
-              if work_area_entry and isinstance(work_area_entry.get(work_area), list):
-                  work_area_entry[work_area].append(new_entry)
-                  print(f'Added to Main Work Areas > {work_area}')
-              else:
-                  print(f'WARNING: Could not find work area: {work_area}')
+          work_area_pattern = rf'(      - {re.escape(work_area)}:\n)'
+          if re.search(work_area_pattern, content):
+              replacement = r'\g<1>' + new_entry + '\n'
+              content = re.sub(work_area_pattern, replacement, content, count=1)
+              print(f'Added to Main Work Areas > {work_area}')
+          else:
+              print(f'WARNING: Could not find work area: {work_area}')
 
           # Write back
           with open('mkdocs.yml', 'w') as f:
-              yaml.dump(config, f, default_flow_style=False, sort_keys=False, indent=2, width=float('inf'))
+              f.write(content)
 
           print('Updated mkdocs.yml')
           PYTHON_SCRIPT
