@@ -1,0 +1,553 @@
+name: Create Project Page PR from Issue
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  create-project-page-pr:
+    # Only run for issues carrying the project-submission label
+    if: contains(github.event.issue.labels.*.name, 'project-submission')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Install YAML parsing tool and utilities ─────────────────────────────
+      - name: Install dependencies
+        run: |
+          npm install -g js-yaml
+
+      # ── Parse issue body ─────────────────────────────────────────────────────
+      - name: Parse issue fields
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body ?? '';
+
+            // Helper: extract the text under a given issue-form heading
+            function extract(label) {
+              // Matches "### Label\n\nvalue" blocks produced by GitHub issue forms
+              const re = new RegExp(
+                `### ${label}\\s*\\n+([\\s\\S]*?)(?=\\n### |$)`,
+                'i'
+              );
+              const m = body.match(re);
+              if (!m) return '';
+              const val = m[1].trim();
+              // GitHub renders blank optional fields as "_No response_"
+              return val === '_No response_' ? '' : val;
+            }
+
+            const title               = extract('Project Title');
+            const summary             = extract('One-Line Summary');
+            const origin              = extract('Origin \\(Optional\\)');
+            const tagsRaw             = extract('Project Tags');
+            const description         = extract('Project Description');
+            const linksRaw            = extract('Relevant Links \\(Optional\\)');
+            const status              = extract('Project Status');
+            const year                = extract('Year \\(if Past Project\\)');
+            const mainWorkArea        = extract('Main Work Area Category');
+
+            // Parse tags from checkboxes (format: "- [x] label" or "- [ ] label")
+            const tags = [];
+            const tagMatches = tagsRaw.match(/^\s*-\s*\[x\]\s*(.+)$/gm) || [];
+            tagMatches.forEach(match => {
+              const tag = match.replace(/^\s*-\s*\[x\]\s*/, '').trim();
+              if (tag) tags.push(tag);
+            });
+
+            // Parse links: "Name: URL" format
+            const links = [];
+            if (linksRaw) {
+              const linkLines = linksRaw.split('\n').filter(l => l.trim());
+              linkLines.forEach(line => {
+                if (line.includes(':')) {
+                  const idx = line.indexOf(':');
+                  const name = line.slice(0, idx).trim();
+                  const url = line.slice(idx + 1).trim();
+                  if (name && url) links.push({ name, url });
+                }
+              });
+            }
+
+            // Generate slug from title (lowercase, replace spaces/special chars with hyphens)
+            const slug = title
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-+|-+$/g, '');
+
+            // Expose as outputs
+            core.setOutput('title',          title);
+            core.setOutput('summary',        summary);
+            core.setOutput('origin',         origin);
+            core.setOutput('tags',           JSON.stringify(tags));
+            core.setOutput('description',    description);
+            core.setOutput('links',          JSON.stringify(links));
+            core.setOutput('status',         status);
+            core.setOutput('year',           year);
+            core.setOutput('main_work_area', mainWorkArea);
+            core.setOutput('slug',           slug);
+
+      # ── Validate required fields ─────────────────────────────────────────────
+      - name: Validate inputs
+        id: validate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '${{ steps.parse.outputs.title }}'.trim();
+            const summary = '${{ steps.parse.outputs.summary }}'.trim();
+            const description = '${{ steps.parse.outputs.description }}'.trim();
+            const status = '${{ steps.parse.outputs.status }}'.trim();
+            const year = '${{ steps.parse.outputs.year }}'.trim();
+            const mainWorkArea = '${{ steps.parse.outputs.main_work_area }}'.trim();
+            const tags = JSON.parse('${{ steps.parse.outputs.tags }}');
+            
+            const errors = [];
+
+            if (!title) errors.push('❌ Project Title is required');
+            if (!summary) errors.push('❌ One-Line Summary is required');
+            if (!description) errors.push('❌ Project Description is required');
+            if (!status) errors.push('❌ Project Status is required');
+            if (!mainWorkArea) errors.push('❌ Main Work Area Category is required');
+            if (tags.length === 0) errors.push('❌ At least one tag is required');
+
+            // Validate status and year
+            if (status && !['Current Project', 'Past Project'].includes(status)) {
+              errors.push(`❌ Invalid Project Status: "${status}". Must be "Current Project" or "Past Project"`);
+            }
+            if (status === 'Past Project' && !year) {
+              errors.push('❌ Year is required when Project Status is "Past Project"');
+            }
+            if (year && isNaN(parseInt(year))) {
+              errors.push(`❌ Year must be a valid number, got: "${year}"`);
+            }
+
+            // Valid work areas
+            const validAreas = [
+              'Predictive Analytics Products',
+              'Data Science for Linked/Longitudinal Data',
+              'Natural Language Processing Products',
+              'Data Science Capability',
+              'Research & Development'
+            ];
+            if (mainWorkArea && !validAreas.includes(mainWorkArea)) {
+              errors.push(`❌ Invalid Main Work Area. Valid options: ${validAreas.join(', ')}`);
+            }
+
+            if (errors.length > 0) {
+              core.error('Validation failed:\n' + errors.join('\n'));
+              core.setOutput('valid', 'false');
+              core.setOutput('error_message', errors.join('\n'));
+            } else {
+              core.setOutput('valid', 'true');
+            }
+
+      # ── Stop if validation failed ────────────────────────────────────────────
+      - name: Comment on issue if validation fails
+        if: steps.validate.outputs.valid == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ❌ Validation Failed\n\nYour project submission has the following issues:\n\n${{ steps.validate.outputs.error_message }}\n\nPlease edit the issue and correct these fields.`
+            });
+
+      - name: Exit if validation failed
+        if: steps.validate.outputs.valid == 'false'
+        run: exit 1
+
+      # ── Check if slug already exists ────────────────────────────────────────
+      - name: Check for duplicate slug
+        id: check_duplicate
+        run: |
+          if git ls-files --error-unmatch "docs/our_work/${{ steps.parse.outputs.slug }}.md" > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment if duplicate slug
+        if: steps.check_duplicate.outputs.exists == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ⚠️ Project Already Exists\n\nA project with the slug \`${{ steps.parse.outputs.slug }}\` already exists. Please use a different project title or update the existing project page instead.`
+            });
+
+      - name: Exit if duplicate
+        if: steps.check_duplicate.outputs.exists == 'true'
+        run: exit 1
+
+      # ── Create branch and checkout ──────────────────────────────────────────
+      - name: Create and checkout feature branch
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH_NAME="project-submission/${{ steps.parse.outputs.slug }}"
+          git checkout -b "$BRANCH_NAME"
+
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+      # ── Generate project markdown file ──────────────────────────────────────
+      - name: Generate markdown file
+        id: generate_md
+        uses: actions/github-script@v7
+        env:
+          TITLE:       ${{ steps.parse.outputs.title }}
+          SUMMARY:     ${{ steps.parse.outputs.summary }}
+          ORIGIN:      ${{ steps.parse.outputs.origin }}
+          TAGS:        ${{ steps.parse.outputs.tags }}
+          DESCRIPTION: ${{ steps.parse.outputs.description }}
+          LINKS:       ${{ steps.parse.outputs.links }}
+          SLUG:        ${{ steps.parse.outputs.slug }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const title = process.env.TITLE;
+            const summary = process.env.SUMMARY;
+            const origin = process.env.ORIGIN || 'Data Science Team';
+            const tagsRaw = JSON.parse(process.env.TAGS);
+            const description = process.env.DESCRIPTION;
+            const linksRaw = JSON.parse(process.env.LINKS);
+            const slug = process.env.SLUG;
+
+            // Clean tags: remove prefixes like "Domain: ", "Technique: ", etc.
+            const tags = tagsRaw.map(t => {
+              // Remove prefix like "Domain: ", "Technique: ", etc.
+              return t.replace(/^[^:]+:\s*/, '').trim();
+            });
+
+            // Generate frontmatter
+            let frontmatter = '---\n';
+            frontmatter += `title: '${title.replace(/'/g, "\\'")}'\n`;
+            frontmatter += `summary: '${summary.replace(/'/g, "\\'")}'\n`;
+            frontmatter += `origin: '${origin.replace(/'/g, "\\'")}'\n`;
+            frontmatter += `tags: [${tags.map(t => `'${t.replace(/'/g, "\\'")}'`).join(', ')}]\n`;
+            frontmatter += '---\n\n';
+
+            // Build document
+            let content = frontmatter;
+            
+            // Add description (assumes it contains proper markdown structure)
+            content += description + '\n\n';
+            
+            // Add links table if present
+            if (linksRaw.length > 0) {
+              content += '## Outputs & Links\n\n';
+              content += 'Output | Link\n';
+              content += '---|---\n';
+              linksRaw.forEach(link => {
+                content += `${link.name} | [Link](${link.url})\n`;
+              });
+              content += '\n';
+            }
+
+            // Add comment and # marker to prevent double title rendering
+            content += '[comment]: <> (The below header stops the title from being rendered (as mkdocs adds it to the page from the "title" attribute) - this way we can add it in the main.html, along with the summary.)\n';
+            content += '#\n';
+
+            // Write to file
+            const filePath = path.join('docs/our_work', `${slug}.md`);
+            fs.writeFileSync(filePath, content);
+            console.log(`Generated: ${filePath}`);
+
+            core.setOutput('md_path', filePath);
+
+      # ── Download and process images ────────────────────────────────────────
+      - name: Process and download images
+        id: images
+        uses: actions/github-script@v7
+        env:
+          SLUG: ${{ steps.parse.outputs.slug }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const https = require('https');
+
+            const slug = process.env.SLUG;
+            const issueBody = context.payload.issue.body || '';
+
+            // Extract image URLs from issue body (GitHub CDN URLs from file uploads)
+            // Matches ![alt](https://github.com/user/repo/assets/...)
+            const imageRegex = /!\[([^\]]*)\]\((https:\/\/github\.com\/[^\s)]+)\)/g;
+            const matches = [];
+            let match;
+            while ((match = imageRegex.exec(issueBody)) !== null) {
+              matches.push({ alt: match[1], url: match[2] });
+            }
+
+            if (matches.length === 0) {
+              console.log('No images found in issue body.');
+              core.setOutput('image_count', '0');
+              return;
+            }
+
+            console.log(`Found ${matches.length} image(s) to download`);
+
+            // Create images directory
+            const imagesDir = path.join('docs/images/our_work', slug);
+            fs.mkdirSync(imagesDir, { recursive: true });
+
+            // Download each image
+            const downloadedImages = [];
+            for (const img of matches) {
+              const urlParts = img.url.split('/');
+              const filename = urlParts[urlParts.length - 1].split('?')[0] || `image-${downloadedImages.length + 1}`;
+              const filepath = path.join(imagesDir, filename);
+
+              try {
+                // Download the file
+                await new Promise((resolve, reject) => {
+                  https.get(img.url, (response) => {
+                    const file = fs.createWriteStream(filepath);
+                    response.pipe(file);
+                    file.on('finish', () => {
+                      file.close();
+                      console.log(`Downloaded: ${filename}`);
+                      downloadedImages.push({ filename, alt: img.alt, url: img.url });
+                      resolve();
+                    });
+                  }).on('error', reject);
+                });
+              } catch (err) {
+                console.warn(`Failed to download ${filename}:`, err.message);
+              }
+            }
+
+            core.setOutput('image_count', downloadedImages.length.toString());
+            core.setOutput('images_json', JSON.stringify(downloadedImages));
+
+      # ── Update project markdown with local image paths ──────────────────────
+      - name: Update image paths in project page
+        if: steps.images.outputs.image_count != '0'
+        uses: actions/github-script@v7
+        env:
+          SLUG: ${{ steps.parse.outputs.slug }}
+          IMAGES_JSON: ${{ steps.images.outputs.images_json }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const slug = process.env.SLUG;
+            const images = JSON.parse(process.env.IMAGES_JSON || '[]');
+            const projectPath = path.join('docs/our_work', `${slug}.md`);
+            let content = fs.readFileSync(projectPath, 'utf8');
+
+            // Build a map of GitHub CDN URL → local filename
+            const imageMap = new Map(images.map(img => [img.url, img.filename]));
+
+            // Replace GitHub CDN image URLs with local paths
+            content = content.replace(
+              /!\[([^\]]*)\]\((https:\/\/github\.com\/[^\s)]+)\)/g,
+              (match, alt, url) => {
+                const filename = imageMap.get(url);
+                if (filename) {
+                  console.log(`Replacing ${url} with ../images/our_work/${slug}/${filename}`);
+                  return `![${alt}](../images/our_work/${slug}/${filename})`;
+                }
+                console.warn(`No filename found for URL: ${url}`);
+                return match;
+              }
+            );
+
+            fs.writeFileSync(projectPath, content);
+            console.log('Updated image paths in project page');
+
+      # ── Update mkdocs.yml ───────────────────────────────────────────────────
+      - name: Update mkdocs.yml
+        id: update_mkdocs
+        uses: actions/github-script@v7
+        env:
+          TITLE:        ${{ steps.parse.outputs.title }}
+          SLUG:         ${{ steps.parse.outputs.slug }}
+          STATUS:       ${{ steps.parse.outputs.status }}
+          YEAR:         ${{ steps.parse.outputs.year }}
+          WORK_AREA:    ${{ steps.parse.outputs.main_work_area }}
+        with:
+          script: |
+            const fs = require('fs');
+            const yaml = require('js-yaml');
+
+            const mkdocsPath = 'mkdocs.yml';
+            const content = fs.readFileSync(mkdocsPath, 'utf8');
+            const config = yaml.load(content);
+
+            const title = process.env.TITLE;
+            const slug = process.env.SLUG;
+            const status = process.env.STATUS;
+            const year = process.env.YEAR;
+            const workArea = process.env.WORK_AREA;
+
+            const newEntry = `${title}: our_work/${slug}.md`;
+
+            // Navigate to Projects nav section
+            const projectsSection = config.nav.find(item => item.Projects);
+            if (!projectsSection) {
+              core.setFailed('Could not find Projects section in mkdocs.yml');
+              return;
+            }
+
+            const projectsNav = projectsSection.Projects;
+
+            // Add to Past/Current Projects
+            const pastCurrentSection = projectsNav.find(item => item['Past/Current Projects']);
+            if (pastCurrentSection && pastCurrentSection['Past/Current Projects']) {
+              if (status === 'Current Project') {
+                // Add to Current Projects
+                const currentProjects = pastCurrentSection['Past/Current Projects'].find(
+                  item => item['Current Projects']
+                );
+                if (currentProjects && Array.isArray(currentProjects['Current Projects'])) {
+                  currentProjects['Current Projects'].push(newEntry);
+                  console.log(`Added to Current Projects`);
+                }
+              } else if (status === 'Past Project') {
+                // Add to Past Projects under the year
+                const pastProjects = pastCurrentSection['Past/Current Projects'].find(
+                  item => item['Past Projects']
+                );
+                if (pastProjects && Array.isArray(pastProjects['Past Projects'])) {
+                  // Find or create year entry
+                  let yearEntry = pastProjects['Past Projects'].find(item => item[year]);
+                  if (!yearEntry) {
+                    yearEntry = { [year]: [] };
+                    pastProjects['Past Projects'].push(yearEntry);
+                  }
+                  yearEntry[year].push(newEntry);
+                  console.log(`Added to Past Projects > ${year}`);
+                }
+              }
+            }
+
+            // Add to Main Work Areas
+            const mainWorkAreasSection = projectsNav.find(item => item['Main Work Areas']);
+            if (mainWorkAreasSection && mainWorkAreasSection['Main Work Areas']) {
+              const workAreaEntry = mainWorkAreasSection['Main Work Areas'].find(
+                item => item[workArea]
+              );
+              if (workAreaEntry && Array.isArray(workAreaEntry[workArea])) {
+                workAreaEntry[workArea].push(newEntry);
+                console.log(`Added to Main Work Areas > ${workArea}`);
+              } else {
+                core.warning(`Could not find work area: ${workArea}`);
+              }
+            }
+
+            // Write back with careful formatting
+            const updatedContent = yaml.dump(config, {
+              lineWidth: -1,
+              indent: 2,
+              noRefs: true
+            });
+            fs.writeFileSync(mkdocsPath, updatedContent);
+            console.log('Updated mkdocs.yml');
+
+      # ── Commit changes ──────────────────────────────────────────────────────
+      - name: Commit changes
+        run: |
+          git add docs/our_work/${{ steps.parse.outputs.slug }}.md
+          git add mkdocs.yml
+          # Add images if any were downloaded
+          if [ -d "docs/images/our_work/${{ steps.parse.outputs.slug }}" ]; then
+            git add "docs/images/our_work/${{ steps.parse.outputs.slug }}"
+          fi
+          git commit -m "Add project page: ${{ steps.parse.outputs.title }}"
+
+      # ── Push branch and create PR ───────────────────────────────────────────
+      - name: Push branch
+        run: |
+          git push origin ${{ env.BRANCH_NAME }}
+
+      - name: Create Pull Request
+        id: cpr
+        uses: actions/github-script@v7
+        env:
+          IMAGE_COUNT: ${{ steps.images.outputs.image_count }}
+        with:
+          script: |
+            const imageCount = process.env.IMAGE_COUNT || '0';
+            const imagesNote = imageCount !== '0'
+              ? `\n- **Images**: ${imageCount} image(s) included in \`docs/images/our_work/${{ steps.parse.outputs.slug }}/\``
+              : '';
+
+            const pr = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: '${{ env.BRANCH_NAME }}',
+              base: 'main',
+              title: 'Add project page: ${{ steps.parse.outputs.title }}',
+              body: `## Project Submission: ${{ steps.parse.outputs.title }}
+
+### Summary
+${{ steps.parse.outputs.summary }}
+
+### Details
+- **Status**: ${{ steps.parse.outputs.status }}
+- **Year**: ${{ steps.parse.outputs.year || 'N/A' }}
+- **Main Work Area**: ${{ steps.parse.outputs.main_work_area }}
+- **Origin**: ${{ steps.parse.outputs.origin }}${imagesNote}
+
+### Changes
+- Added: \`docs/our_work/${{ steps.parse.outputs.slug }}.md\`
+- Updated: \`mkdocs.yml\` (added to Current/Past Projects and Work Area sections)
+
+### Next Steps
+1. Review the changes in this PR
+2. Once approved, merge this PR
+3. The website will be updated automatically
+
+Closes #${{ github.event.issue.number }}`
+            });
+
+            core.setOutput('pr_number', pr.data.number);
+            core.setOutput('pr_url', pr.data.html_url);
+
+      # ── Comment on original issue ───────────────────────────────────────────
+      - name: Comment on issue with PR link
+        uses: actions/github-script@v7
+        env:
+          IMAGE_COUNT: ${{ steps.images.outputs.image_count }}
+        with:
+          script: |
+            const imageCount = process.env.IMAGE_COUNT || '0';
+            const imagesMsg = imageCount !== '0'
+              ? `\n\n**Images processed**: ${imageCount} image(s) have been automatically downloaded and included in the PR.`
+              : '\n\n**Images**: No images were detected in your issue. If you need to add images later, you can upload them to `docs/images/our_work/${{ steps.parse.outputs.slug }}/` in the PR branch.';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ✅ Project Submission Processed
+
+Great! Your project page has been generated and a PR has been created.
+
+**Pull Request**: #${{ steps.cpr.outputs.pr_number }}
+[View PR](${{ steps.cpr.outputs.pr_url }})${imagesMsg}
+
+### Next Steps
+1. Review the generated project page markdown
+2. The team will review and merge when ready
+3. Once merged, the website will be updated automatically`
+            });
